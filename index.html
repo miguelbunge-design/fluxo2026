@@ -1814,16 +1814,33 @@ function gapiLoaded() {
   gapi.load('client', async () => {
     await gapi.client.init({ discoveryDocs: [DRIVE_DISCOVERY] });
     driveReady = true;
-    // tenta restaurar sessão salva
-    const saved = localStorage.getItem('fluxo_drive_token');
+    // Tokens OAuth expiram em ~1h — nunca reusar o token salvo diretamente.
+    // Se há sessão anterior, pede token fresco via GIS com prompt:'' (sem popup).
+    const savedUser = localStorage.getItem('fluxo_drive_user');
     const savedFile = localStorage.getItem('fluxo_drive_file_id');
-    if (saved) {
-      driveToken  = saved;
+    if (savedUser && typeof google !== 'undefined') {
+      driveUser   = savedUser;
       driveFileId = savedFile || null;
-      gapi.client.setToken({ access_token: driveToken });
-      driveUser = localStorage.getItem('fluxo_drive_user') || 'Conectado';
-      driveSetStatus('on', driveUser);
-      await carregarDoDrive(true); // silencioso
+      driveSetStatus('syncing', 'Reconectando...');
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: DRIVE_CLIENT_ID,
+        scope: DRIVE_SCOPE,
+        prompt: '',
+        callback: async (resp) => {
+          if (resp.error) {
+            driveToken = null;
+            localStorage.removeItem('fluxo_drive_token');
+            driveSetStatus('', 'Não conectado');
+            return;
+          }
+          driveToken = resp.access_token;
+          gapi.client.setToken({ access_token: driveToken });
+          localStorage.setItem('fluxo_drive_token', driveToken);
+          driveSetStatus('on', driveUser);
+          await carregarDoDrive(true); // silencioso
+        }
+      });
+      client.requestAccessToken({ prompt: '' });
     }
   });
 }
