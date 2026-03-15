@@ -1840,14 +1840,22 @@ function driveToggle() {
     if (typeof gapi !== 'undefined') { gapiLoaded(); setTimeout(driveToggle, 1000); return; }
     driveToast('Scripts do Google ainda carregando, aguarde...', 'err'); return;
   }
+  // Guarda: GIS script pode não ter carregado (falha de rede)
+  if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+    driveToast('Scripts do Google não carregaram — recarregue a página.', 'err'); return;
+  }
   driveSetStatus('syncing', 'Aguardando login...');
+  // Desativa o botão durante o fluxo OAuth para evitar duplo clique
+  const btn = document.getElementById('btn-drive');
+  btn.onclick = null;
   const client = google.accounts.oauth2.initTokenClient({
     client_id: DRIVE_CLIENT_ID,
     scope: DRIVE_SCOPE,
     callback: async (resp) => {
       if (resp.error) {
-        driveSetStatus('error', 'Erro ao conectar');
-        driveToast('Erro: ' + resp.error, 'err'); return;
+        driveSetStatus('', 'Não conectado'); // restaura botão
+        const detalhe = [resp.error, resp.error_subtype, resp.error_description].filter(Boolean).join(' | ');
+        driveToast('Erro ao conectar: ' + detalhe, 'err'); return;
       }
       driveToken = resp.access_token;
       gapi.client.setToken({ access_token: driveToken });
