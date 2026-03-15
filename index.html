@@ -1868,6 +1868,7 @@ function driveToggle() {
       localStorage.setItem('fluxo_drive_user', driveUser);
       driveSetStatus('on', driveUser);
       driveToast('Google Drive conectado!');
+      await new Promise(r => setTimeout(r, 1000)); // aguarda token propagar
       await carregarDoDrive(false);
     }
   });
@@ -1968,6 +1969,14 @@ async function carregarDoDrive(silencioso) {
     const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: { Authorization: 'Bearer ' + driveToken }
     });
+    if (res.status === 401) {
+      driveToken = null;
+      gapi.client.setToken(null);
+      localStorage.removeItem('fluxo_drive_token');
+      driveSetStatus('', 'Clique para reconectar');
+      driveToast('Sessão expirada — clique para reconectar', 'err');
+      return;
+    }
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
 
