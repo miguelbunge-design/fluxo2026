@@ -1812,7 +1812,7 @@ function driveToast(msg, type) {
 // ── Inicialização GAPI ────────────────────────────────────────
 function gapiLoaded() {
   gapi.load('client', async () => {
-    await gapi.client.init({ discoveryDocs: [DRIVE_DISCOVERY] });
+    await gapi.client.init({}); // discoveryDocs não necessário — Drive usa fetch direto
     driveReady = true;
     // GIS não suporta renovação silenciosa de token sem gesto do usuário —
     // requestAccessToken abre popup que o browser bloqueia em page load.
@@ -1858,12 +1858,14 @@ function driveToggle() {
         driveToast('Erro ao conectar: ' + detalhe, 'err'); return;
       }
       driveToken = resp.access_token;
-      gapi.client.setToken({ access_token: driveToken });
       localStorage.setItem('fluxo_drive_token', driveToken);
-      // busca nome do usuário
+      // busca nome do usuário via fetch direto
       try {
-        const ui = await gapi.client.request({ path: 'https://www.googleapis.com/oauth2/v3/userinfo' });
-        driveUser = ui.result.name || ui.result.email || 'Conectado';
+        const ui = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: 'Bearer ' + driveToken }
+        });
+        const uiData = await ui.json();
+        driveUser = uiData.name || uiData.email || 'Conectado';
       } catch(e) { driveUser = 'Conectado'; }
       localStorage.setItem('fluxo_drive_user', driveUser);
       driveSetStatus('on', driveUser);
@@ -1881,7 +1883,7 @@ function driveDesconectar() {
   localStorage.removeItem('fluxo_drive_token');
   localStorage.removeItem('fluxo_drive_file_id');
   localStorage.removeItem('fluxo_drive_user');
-  gapi.client.setToken(null);
+  driveToken = null; // token limpo — fetch usa driveToken diretamente
   driveSetStatus('', 'Não conectado');
   driveToast('Drive desconectado');
 }
@@ -1890,14 +1892,15 @@ function driveDesconectar() {
 async function driveBuscarArquivo() {
   if (driveFileId) return driveFileId;
   try {
-    const res = await gapi.client.drive.files.list({
-      q: `name='${DRIVE_FILENAME}' and trashed=false`,
-      fields: 'files(id,name)',
-      spaces: 'drive'
-    });
-    const files = res.result.files;
-    if (files && files.length > 0) {
-      driveFileId = files[0].id;
+    const q = encodeURIComponent(`name='${DRIVE_FILENAME}' and trashed=false`);
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id%2Cname)&spaces=drive`,
+      { headers: { Authorization: 'Bearer ' + driveToken } }
+    );
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    if (data.files && data.files.length > 0) {
+      driveFileId = data.files[0].id;
       localStorage.setItem('fluxo_drive_file_id', driveFileId);
       return driveFileId;
     }
@@ -1971,7 +1974,6 @@ async function carregarDoDrive(silencioso) {
     });
     if (res.status === 401) {
       driveToken = null;
-      gapi.client.setToken(null);
       localStorage.removeItem('fluxo_drive_token');
       driveSetStatus('', 'Clique para reconectar');
       driveToast('Sessão expirada — clique para reconectar', 'err');
