@@ -715,7 +715,7 @@ const CAT_COLORS = {
 const PROJECAO = {'01':{proj:53155,nome:'Janeiro'},'02':{proj:103500,nome:'Fevereiro'},'03':{proj:103640,nome:'Março'},'04':{proj:112750,nome:'Abril'},'05':{proj:110455,nome:'Maio'},'06':{proj:112065,nome:'Junho'},'07':{proj:50890,nome:'Julho'},'08':{proj:100640,nome:'Agosto'},'09':{proj:121800,nome:'Setembro'},'10':{proj:98900,nome:'Outubro'},'11':{proj:101860,nome:'Novembro'},'12':{proj:80000,nome:'Dezembro'}};
 
 // Transações a ignorar — evita dupla contagem
-const IGNORE_PATTERNS = ['pagamento de fatura','pagamento fatura','pagamento recebido','estorno de fatura','fatura nubank','fatura cartao','fatura cartão','fatura do cart','rendimento','resgate automatico'];
+const IGNORE_PATTERNS = ['pagamento recebido','estorno de fatura','fatura nubank','fatura cartao','fatura cartão','fatura do cart','rendimento','resgate automatico'];
 
 const KEYWORDS = {
   'Comportalmente': ['comportalmente'],
@@ -1227,9 +1227,11 @@ async function processAndCategorize(){
     else if(det.banco==='Nubank') document.getElementById('dot-nu').classList.add('active');
     else if(det.banco==='Inter PJ') document.getElementById('dot-inter').classList.add('active');
   }
-  // Remove duplicatas pelo par (date+desc+amount)
-  const existingKeys=new Set(transactions.map(t=>t.date+'|'+t.desc+'|'+t.amount));
-  const dedupedRows=newRows.filter(r=>!existingKeys.has(r.date+'|'+r.desc+'|'+r.amount));
+  // Remove duplicatas pelo par (banco+date+desc+amount), permitindo múltiplas compras com mesmo nome/valor
+  const countOccurrences = arr => arr.reduce((acc,t)=>{const k=t.banco+'|'+t.date+'|'+t.desc+'|'+t.amount;acc[k]=(acc[k]||0)+1;return acc;},{});
+  const existingKeyCounts = countOccurrences(transactions);
+  const newKeyCounts = {};
+  const dedupedRows = newRows.filter(r=>{const k=r.banco+'|'+r.date+'|'+r.desc+'|'+r.amount;newKeyCounts[k]=(newKeyCounts[k]||0)+1;return newKeyCounts[k]>(existingKeyCounts[k]||0);});
   transactions.push(...dedupedRows);
   await new Promise(r=>setTimeout(r,600));
   hideLoading();
